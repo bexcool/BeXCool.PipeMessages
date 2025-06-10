@@ -63,10 +63,10 @@ namespace BeXCool.PipeMessages
         /// <summary>
         /// Starts the pipe server and begins checking for messages at regular intervals.
         /// </summary>
-        public void Start()
+        public async void Start()
         {
             _pipeClient = new(".", PipeName, PipeDirection.InOut);
-            _pipeClient.Connect();
+            await _pipeClient.ConnectAsync();
 
             _pipeReader = new StreamReader(_pipeClient);
             _pipeWriter = new StreamWriter(_pipeClient) { AutoFlush = true };
@@ -149,7 +149,7 @@ namespace BeXCool.PipeMessages
         /// <summary>
         /// Checks for incoming messages from the pipe server and raises the MessageReceived event for each message.
         /// </summary>
-        private void CheckForMessages()
+        private async void CheckForMessages()
         {
             if (_pipeClient == null || _pipeReader == null || !_pipeClient.IsConnected)
             {
@@ -158,7 +158,7 @@ namespace BeXCool.PipeMessages
 
             while (_pipeClient.IsConnected && _pipeReader.Peek() >= 0)
             {
-                var line = _pipeReader.ReadLine();
+                var line = await _pipeReader.ReadLineAsync();
                 if (line != null)
                 {
                     var message = JsonConvert.DeserializeObject<T>(line);
@@ -174,15 +174,14 @@ namespace BeXCool.PipeMessages
         /// Writes a message to the pipe server stream in JSON format.
         /// </summary>
         /// <param name="message">The message to send.</param>
-        private void WriteMessageToStream(T message)
+        private async void WriteMessageToStream(T message)
         {
             if (_pipeClient == null || _pipeWriter == null)
             {
                 return;
             }
 
-            _pipeWriter.WriteLine(JsonConvert.SerializeObject(message));
-            _pipeWriter.Flush();
+            await _pipeWriter.WriteLineAsync(JsonConvert.SerializeObject(message));
         }
     }
 }

@@ -151,7 +151,7 @@ namespace BeXCool.PipeMessages
         /// <summary>
         /// Checks for incoming messages from the pipe server and raises the MessageReceived event for each message.
         /// </summary>
-        private void CheckForMessages()
+        private async void CheckForMessages()
         {
             if (_pipeServer == null || _pipeReader == null || !_pipeServer.IsConnected)
             {
@@ -160,7 +160,7 @@ namespace BeXCool.PipeMessages
 
             while (_pipeServer.IsConnected && _pipeReader.Peek() >= 0)
             {
-                var line = _pipeReader.ReadLine();
+                var line = await _pipeReader.ReadLineAsync();
                 if (line != null)
                 {
                     var message = JsonConvert.DeserializeObject<T>(line);
@@ -176,14 +176,14 @@ namespace BeXCool.PipeMessages
         /// Writes a message to the pipe server stream in JSON format.
         /// </summary>
         /// <param name="message">The message to send.</param>
-        private void WriteMessageToStream(T message)
+        private async void WriteMessageToStream(T message)
         {
             if (_pipeServer == null || _pipeWriter == null)
             {
                 return;
             }
 
-            _pipeWriter.WriteLine(JsonConvert.SerializeObject(message));
+            await _pipeWriter.WriteLineAsync(JsonConvert.SerializeObject(message));
         }
     }
 }
