@@ -1,6 +1,7 @@
 ﻿using BeXCool.PipeMessages.Common;
 using Newtonsoft.Json;
 using System.IO.Pipes;
+using System.Reflection.PortableExecutable;
 using Timer = System.Timers.Timer;
 
 namespace BeXCool.PipeMessages
@@ -24,6 +25,14 @@ namespace BeXCool.PipeMessages
         /// The named pipe server stream used for communication with clients.
         /// </summary>
         private NamedPipeServerStream? _pipeServer = null;
+        /// <summary>
+        /// The stream reader and writer for reading and writing messages to the pipe client.
+        /// </summary>
+        private StreamReader? _pipeReader = null;
+        /// <summary>
+        /// The stream writer for writing messages to the pipe client.
+        /// </summary>
+        private StreamWriter? _pipeWriter = null;
         /// <summary>
         /// Timer that checks for messages at regular intervals if ManualCheck is false.
         /// </summary>
@@ -56,9 +65,13 @@ namespace BeXCool.PipeMessages
         /// <summary>
         /// Starts the pipe server and begins checking for messages at regular intervals.
         /// </summary>
-        public void Start()
+        public async void Start()
         {
             _pipeServer = new(PipeName, PipeDirection.InOut);
+            await _pipeServer.WaitForConnectionAsync();
+
+            _pipeReader = new StreamReader(_pipeServer);
+            _pipeWriter = new StreamWriter(_pipeServer) { AutoFlush = true };
 
             _pipeTimer = new(100);
             _pipeTimer.Elapsed += _timer_Elapsed;
@@ -140,23 +153,20 @@ namespace BeXCool.PipeMessages
         /// </summary>
         private void CheckForMessages()
         {
-            if (_pipeServer == null || !_pipeServer.IsConnected)
+            if (_pipeServer == null || _pipeReader == null || !_pipeServer.IsConnected)
             {
                 return;
             }
 
-            using (var reader = new StreamReader(_pipeServer))
+            while (_pipeServer.IsConnected && _pipeReader.Peek() >= 0)
             {
-                while (_pipeServer.IsConnected && reader.Peek() >= 0)
+                var line = _pipeReader.ReadLine();
+                if (line != null)
                 {
-                    var line = reader.ReadLine();
-                    if (line != null)
+                    var message = JsonConvert.DeserializeObject<T>(line);
+                    if (message != null)
                     {
-                        var message = JsonConvert.DeserializeObject<T>(line);
-                        if (message != null)
-                        {
-                            MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
-                        }
+                        MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
                     }
                 }
             }
@@ -168,16 +178,12 @@ namespace BeXCool.PipeMessages
         /// <param name="message">The message to send.</param>
         private void WriteMessageToStream(T message)
         {
-            if (_pipeServer == null)
+            if (_pipeServer == null || _pipeWriter == null)
             {
                 return;
             }
 
-            using (var writer = new StreamWriter(_pipeServer))
-            {
-                writer.WriteLine(JsonConvert.SerializeObject(message));
-                writer.Flush();
-            }
+            _pipeWriter.WriteLine(JsonConvert.SerializeObject(message));
         }
     }
 }
