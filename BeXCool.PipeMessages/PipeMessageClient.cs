@@ -35,6 +35,10 @@ namespace BeXCool.PipeMessages
         /// Timer that checks for messages at regular intervals if ManualCheck is false.
         /// </summary>
         private Timer? _pipeTimer = null;
+        /// <summary>
+        /// Queue for storing messages that are sent when the pipe server is not connected.
+        /// </summary>
+        private Stack<T> _messageQueue = new();
 
         /// <summary>
         /// Initializes a new instance of the PipeMessageClient class with the specified pipe name.
@@ -90,9 +94,15 @@ namespace BeXCool.PipeMessages
         /// <returns>True if message is sent or queued for later sending, otherwise false.</returns>
         public bool SendMessage(T message)
         {
-            if (_pipeClient == null || !_pipeClient.IsConnected)
+            if (_pipeClient == null)
             {
                 return false;
+            }
+
+            if (!_pipeClient.IsConnected)
+            {
+                _messageQueue.Push(message);
+                return true;
             }
 
             WriteMessageToStream(message);
@@ -110,6 +120,7 @@ namespace BeXCool.PipeMessages
             _pipeClient?.Dispose();
             _pipeClient = null;
             _pipeTimer = null;
+            _messageQueue.Clear();
         }
 
         /// <summary>
@@ -121,6 +132,15 @@ namespace BeXCool.PipeMessages
             {
                 _pipeTimer?.Stop();
                 return;
+            }
+
+            if (_messageQueue.Count > 0 && _pipeClient.IsConnected)
+            {
+                while (_messageQueue.Count > 0)
+                {
+                    var message = _messageQueue.Pop();
+                    WriteMessageToStream(message);
+                }
             }
 
             CheckForMessages();
@@ -162,6 +182,7 @@ namespace BeXCool.PipeMessages
             }
 
             _pipeWriter.WriteLine(JsonConvert.SerializeObject(message));
+            _pipeWriter.Flush();
         }
     }
 }
