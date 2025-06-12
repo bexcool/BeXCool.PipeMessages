@@ -1,7 +1,6 @@
 ﻿using BeXCool.PipeMessages.Common;
 using Newtonsoft.Json;
 using System.IO.Pipes;
-using System.Reflection.PortableExecutable;
 using Timer = System.Timers.Timer;
 
 namespace BeXCool.PipeMessages
@@ -65,36 +64,39 @@ namespace BeXCool.PipeMessages
         /// <summary>
         /// Starts the pipe server and begins checking for messages at regular intervals.
         /// </summary>
-        public async void Start()
+        public async Task StartAsync()
         {
-            _pipeServer = new(PipeName, PipeDirection.InOut);
+            _pipeServer = new(PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Message);
             await _pipeServer.WaitForConnectionAsync();
 
             _pipeReader = new StreamReader(_pipeServer);
             _pipeWriter = new StreamWriter(_pipeServer) { AutoFlush = true };
 
+            _ = Task.Run(MessageLoopAsync);
+
+            return;
             _pipeTimer = new(100);
             _pipeTimer.Elapsed += _timer_Elapsed;
             _pipeTimer.Start();
         }
 
         /// <summary>
-        /// Forces a check for messages from the pipe server. This is useful when ManualCheck is set to true.
+        /// Forces a check for messages from the pipe client. This is useful when ManualCheck is set to true.
         /// </summary>
-        public void ForceCheck()
+        public async void ForceCheck()
         {
             if (ManualCheck)
             {
-                CheckForMessages();
+                await CheckForMessagesAsync();
             }
         }
 
         /// <summary>
-        /// Sends a message to the pipe server. If the server is not connected, the message is queued for later sending.
+        /// Sends a message to the pipe client. If the client is not connected, the message is queued for later sending.
         /// </summary>
         /// <param name="message">The message to send.</param>
         /// <returns>True if message is sent or queued for later sending, otherwise false.</returns>
-        public bool SendMessage(T message)
+        public async Task<bool> SendMessageAsync(T message)
         {
             if (_pipeServer == null)
             {
@@ -107,7 +109,7 @@ namespace BeXCool.PipeMessages
                 return true;
             }
 
-            WriteMessageToStream(message);
+            await WriteMessageToStreamAsync(message);
 
             return true;
         }
@@ -125,8 +127,25 @@ namespace BeXCool.PipeMessages
             _messageQueue.Clear();
         }
 
+        private async Task MessageLoopAsync()
+        {
+            while (_pipeServer != null)
+            {
+                if (_messageQueue.Count > 0 && _pipeServer.IsConnected)
+                {
+                    while (_messageQueue.Count > 0)
+                    {
+                        var message = _messageQueue.Pop();
+                        await WriteMessageToStreamAsync(message);
+                    }
+                }
+
+                await CheckForMessagesAsync();
+            }
+        }
+
         /// <summary>
-        /// Handles the timer elapsed event to check for messages and send queued messages if the pipe server is connected.
+        /// Handles the timer elapsed event to check for messages and send queued messages if the pipe client is connected.
         /// </summary>
         private void _timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
@@ -141,42 +160,45 @@ namespace BeXCool.PipeMessages
                 while (_messageQueue.Count > 0)
                 {
                     var message = _messageQueue.Pop();
-                    WriteMessageToStream(message);
+                    WriteMessageToStreamAsync(message);
                 }
             }
 
-            CheckForMessages();
+            CheckForMessagesAsync();
         }
 
         /// <summary>
-        /// Checks for incoming messages from the pipe server and raises the MessageReceived event for each message.
+        /// Checks for incoming messages from the pipe client and raises the MessageReceived event for each message.
         /// </summary>
-        private async void CheckForMessages()
+        private async Task CheckForMessagesAsync()
         {
             if (_pipeServer == null || _pipeReader == null || !_pipeServer.IsConnected)
             {
                 return;
             }
 
-            while (_pipeServer.IsConnected && _pipeReader.Peek() >= 0)
+            while (_pipeServer.IsConnected)
             {
-                var line = await _pipeReader.ReadLineAsync();
-                if (line != null)
+                if (_pipeReader.Peek() >= 0)
                 {
-                    var message = JsonConvert.DeserializeObject<T>(line);
-                    if (message != null)
+                    var line = await _pipeReader.ReadLineAsync();
+                    if (line != null)
                     {
-                        MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
+                        var message = JsonConvert.DeserializeObject<T>(line);
+                        if (message != null)
+                        {
+                            MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
+                        }
                     }
                 }
             }
         }
 
         /// <summary>
-        /// Writes a message to the pipe server stream in JSON format.
+        /// Writes a message to the pipe stream in JSON format.
         /// </summary>
         /// <param name="message">The message to send.</param>
-        private async void WriteMessageToStream(T message)
+        private async Task WriteMessageToStreamAsync(T message)
         {
             if (_pipeServer == null || _pipeWriter == null)
             {

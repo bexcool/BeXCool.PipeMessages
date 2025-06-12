@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BeXCool.PipeMessages", "BeX
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BeXCool.PipeMessages.Tests", "BeXCool.PipeMessages.Tests\BeXCool.PipeMessages.Tests.csproj", "{D435BE31-94CC-4C75-B8B4-992A85AE3E0E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BeXCool.PipeMessages.Server", "BeXCool.PipeMessages.Server\BeXCool.PipeMessages.Server.csproj", "{50C21F5A-FB9F-4645-B095-B69E4487ABAD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{D435BE31-94CC-4C75-B8B4-992A85AE3E0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D435BE31-94CC-4C75-B8B4-992A85AE3E0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D435BE31-94CC-4C75-B8B4-992A85AE3E0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{50C21F5A-FB9F-4645-B095-B69E4487ABAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{50C21F5A-FB9F-4645-B095-B69E4487ABAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{50C21F5A-FB9F-4645-B095-B69E4487ABAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{50C21F5A-FB9F-4645-B095-B69E4487ABAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,35 +1,27 @@
-﻿using BeXCool.PipeMessages.Tests;
-using BeXCool.PipeMessages;
+﻿using BeXCool.PipeMessages;
 
 class Program
 {
     static async Task Main(string[] args)
     {
-        var server = new PipeMessageServer<TestModel>("Test");
-        server.MessageReceived += (sender, args) =>
-        {
-            Console.WriteLine($"Server received message: {args.Message.Data}");
-        };
+        Console.WriteLine("This is client.");
 
-        server.Start();
-        server.SendMessage(new TestModel(22, "I love Viki <3"));
-
-        var client = new PipeMessageClient<TestModel>("Test");
+        var client = new PipeMessageClient<string>("Test");
         client.MessageReceived += (sender, args) =>
         {
-            Console.WriteLine($"Client received message: {args.Message.Data}");
+            Console.WriteLine($"Client received message: {args.Message}");
         };
 
-        client.Start();
-        client.SendMessage(new TestModel(22, "I love Viki to server <3"));
-        client.SendMessage(new TestModel(1, "Are you alive - server?"));
+        await client.StartAsync();
+        //await client.SendMessageAsync("I love Viki to server <3");
+        //await client.SendMessageAsync("Are you alive - server?");
 
         Console.WriteLine("Messages sent.");
 
         while (true)
         {
-            await Task.Delay(1000);
-            client.SendMessage(new TestModel(1, "Are you alive - server?"));
+            string input = Console.ReadLine() ?? "";
+            await client.SendMessageAsync("[Client says]: " + input);
         }
     }
 }
