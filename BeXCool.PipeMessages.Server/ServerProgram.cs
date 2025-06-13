@@ -13,7 +13,9 @@ class ServerProgram
         };
 
         await server.StartAsync();
-        //await server.SendMessageAsync("I love Viki <3");
+        await server.SendMessageAsync("I love Viki <3");
+
+        await Task.Delay(500);
 
         while (true)
         {

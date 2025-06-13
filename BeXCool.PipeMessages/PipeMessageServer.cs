@@ -66,7 +66,7 @@ namespace BeXCool.PipeMessages
         /// </summary>
         public async Task StartAsync()
         {
-            _pipeServer = new(PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Message);
+            _pipeServer = new(PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Message, PipeOptions.Asynchronous);
             await _pipeServer.WaitForConnectionAsync();
 
             _pipeReader = new StreamReader(_pipeServer);
@@ -177,7 +177,7 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            while (_pipeServer.IsConnected)
+            while (_pipeServer != null && _pipeServer.IsConnected)
             {
                 if (_pipeReader.Peek() >= 0)
                 {

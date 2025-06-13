@@ -176,7 +176,7 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            while (_pipeClient.IsConnected)
+            while (_pipeClient != null && _pipeClient.IsConnected)
             {
                 if (_pipeReader.Peek() >= 0)
                 {
