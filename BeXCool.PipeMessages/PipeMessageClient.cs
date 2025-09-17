@@ -65,19 +65,40 @@ namespace BeXCool.PipeMessages
         /// </summary>
         public async Task StartAsync()
         {
-            _pipeClient = new(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            await _pipeClient.ConnectAsync();
-
-            _pipeReader = new StreamReader(_pipeClient);
-            _pipeWriter = new StreamWriter(_pipeClient) { AutoFlush = true };
-
-            _ = Task.Run(MessageLoopAsync);
-
-            if (!ManualCheck)
+            try
             {
-                _pipeTimer = new(100);
-                _pipeTimer.Elapsed += _timer_Elapsed;
-                _pipeTimer.Start();
+                _pipeClient = new(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                
+                // Add timeout to connection attempt
+                var connectTask = _pipeClient.ConnectAsync();
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+                
+                var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+                
+                if (completedTask == timeoutTask)
+                {
+                    // Connection timeout
+                    await DisconnectAsync();
+                    throw new TimeoutException($"Failed to connect to pipe '{PipeName}' within 5 seconds");
+                }
+
+                _pipeReader = new StreamReader(_pipeClient);
+                _pipeWriter = new StreamWriter(_pipeClient) { AutoFlush = true };
+
+                _ = Task.Run(MessageLoopAsync);
+
+                if (!ManualCheck)
+                {
+                    _pipeTimer = new(100);
+                    _pipeTimer.Elapsed += _timer_Elapsed;
+                    _pipeTimer.Start();
+                }
+            }
+            catch (Exception)
+            {
+                // Clean up on any exception
+                await DisconnectAsync();
+                throw;
             }
         }
 
@@ -99,6 +120,7 @@ namespace BeXCool.PipeMessages
         /// <returns>True if message is sent or queued for later sending, otherwise false.</returns>
         public async Task<bool> SendMessageAsync(T message)
         {
+            // If client is null (disposed), we can't queue or send
             if (_pipeClient == null)
             {
                 return false;
