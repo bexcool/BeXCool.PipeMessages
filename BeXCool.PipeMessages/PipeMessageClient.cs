@@ -73,10 +73,12 @@ namespace BeXCool.PipeMessages
 
             _ = Task.Run(MessageLoopAsync);
 
-            return;
-            _pipeTimer = new(100);
-            _pipeTimer.Elapsed += _timer_Elapsed;
-            _pipeTimer.Start();
+            if (!ManualCheck)
+            {
+                _pipeTimer = new(100);
+                _pipeTimer.Elapsed += _timer_Elapsed;
+                _pipeTimer.Start();
+            }
         }
 
         /// <summary>
@@ -102,7 +104,14 @@ namespace BeXCool.PipeMessages
                 return false;
             }
 
+            // If not connected, try to reconnect first
             if (!_pipeClient.IsConnected)
+            {
+                await TryReconnectAsync();
+            }
+
+            // If still not connected after reconnection attempt, queue the message
+            if (_pipeClient == null || !_pipeClient.IsConnected)
             {
                 _messageQueue.Push(message);
                 return true;
@@ -120,8 +129,21 @@ namespace BeXCool.PipeMessages
         {
             _pipeTimer?.Stop();
             _pipeTimer?.Dispose();
-            _pipeClient?.Dispose();
+            
+            try
+            {
+                _pipeReader?.Dispose();
+                _pipeWriter?.Dispose();
+                _pipeClient?.Dispose();
+            }
+            catch
+            {
+                // Ignore exceptions during disposal
+            }
+            
             _pipeClient = null;
+            _pipeReader = null;
+            _pipeWriter = null;
             _pipeTimer = null;
             _messageQueue.Clear();
         }
@@ -130,16 +152,43 @@ namespace BeXCool.PipeMessages
         {
             while (_pipeClient != null)
             {
-                if (_messageQueue.Count > 0 && _pipeClient.IsConnected)
+                try
                 {
-                    while (_messageQueue.Count > 0)
+                    // Try to reconnect if not connected
+                    if (_pipeClient != null && !_pipeClient.IsConnected)
                     {
-                        var message = _messageQueue.Pop();
-                        await WriteMessageToStreamAsync(message);
+                        await TryReconnectAsync();
                     }
+
+                    // Process queued messages if connected
+                    if (_messageQueue.Count > 0 && _pipeClient != null && _pipeClient.IsConnected)
+                    {
+                        while (_messageQueue.Count > 0)
+                        {
+                            var message = _messageQueue.Pop();
+                            await WriteMessageToStreamAsync(message);
+                            
+                            // Check if connection was lost during write
+                            if (_pipeClient == null || !_pipeClient.IsConnected)
+                            {
+                                // Put the message back if it wasn't sent
+                                _messageQueue.Push(message);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check for incoming messages
+                    await CheckForMessagesAsync();
+                }
+                catch (Exception)
+                {
+                    // Handle any unexpected exceptions by disconnecting
+                    await DisconnectAsync();
                 }
 
-                await CheckForMessagesAsync();
+                // Small delay to prevent busy waiting
+                await Task.Delay(50);
             }
         }
 
@@ -154,16 +203,44 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            if (_messageQueue.Count > 0 && _pipeClient.IsConnected)
+            // Run async operations without blocking the timer thread
+            _ = Task.Run(async () =>
             {
-                while (_messageQueue.Count > 0)
+                try
                 {
-                    var message = _messageQueue.Pop();
-                    WriteMessageToStreamAsync(message);
-                }
-            }
+                    // Try to reconnect if not connected
+                    if (!_pipeClient.IsConnected)
+                    {
+                        await TryReconnectAsync();
+                    }
 
-            CheckForMessagesAsync();
+                    // Process queued messages if connected
+                    if (_messageQueue.Count > 0 && _pipeClient != null && _pipeClient.IsConnected)
+                    {
+                        while (_messageQueue.Count > 0)
+                        {
+                            var message = _messageQueue.Pop();
+                            await WriteMessageToStreamAsync(message);
+                            
+                            // Check if connection was lost during write
+                            if (_pipeClient == null || !_pipeClient.IsConnected)
+                            {
+                                // Put the message back if it wasn't sent
+                                _messageQueue.Push(message);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check for incoming messages
+                    await CheckForMessagesAsync();
+                }
+                catch (Exception)
+                {
+                    // Handle any unexpected exceptions by disconnecting
+                    await DisconnectAsync();
+                }
+            });
         }
 
         /// <summary>
@@ -176,20 +253,43 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            while (_pipeClient != null && _pipeClient.IsConnected)
+            try
             {
-                if (_pipeReader.Peek() >= 0)
+                while (_pipeClient != null && _pipeClient.IsConnected)
                 {
-                    var line = await _pipeReader.ReadLineAsync();
-                    if (line != null)
+                    if (_pipeReader.Peek() >= 0)
                     {
-                        var message = JsonConvert.DeserializeObject<T>(line);
-                        if (message != null)
+                        var line = await _pipeReader.ReadLineAsync();
+                        if (line != null)
                         {
-                            MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
+                            var message = JsonConvert.DeserializeObject<T>(line);
+                            if (message != null)
+                            {
+                                MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
+                            }
                         }
                     }
+                    else
+                    {
+                        // No data available, break to prevent busy waiting
+                        break;
+                    }
                 }
+            }
+            catch (IOException)
+            {
+                // Pipe is broken, clean up the connection
+                await DisconnectAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Stream has been disposed, clean up the connection
+                await DisconnectAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // Stream is in an invalid state, clean up the connection
+                await DisconnectAsync();
             }
         }
 
@@ -204,7 +304,99 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            await _pipeWriter.WriteLineAsync(JsonConvert.SerializeObject(message));
+            try
+            {
+                // Double-check connection state before writing
+                if (!_pipeClient.IsConnected)
+                {
+                    return;
+                }
+
+                await _pipeWriter.WriteLineAsync(JsonConvert.SerializeObject(message));
+            }
+            catch (IOException)
+            {
+                // Pipe is broken, clean up the connection
+                await DisconnectAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Stream has been disposed, clean up the connection
+                await DisconnectAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // Stream is in an invalid state, clean up the connection
+                await DisconnectAsync();
+            }
+        }
+
+        /// <summary>
+        /// Attempts to reconnect to the pipe server if the connection was lost.
+        /// </summary>
+        private async Task TryReconnectAsync()
+        {
+            if (_pipeClient != null && _pipeClient.IsConnected)
+            {
+                return; // Already connected
+            }
+
+            try
+            {
+                // Clean up existing connection first
+                await DisconnectAsync();
+
+                // Create new connection
+                _pipeClient = new(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                
+                // Try to connect with a timeout
+                var connectTask = _pipeClient.ConnectAsync();
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+                
+                var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+                
+                if (completedTask == timeoutTask)
+                {
+                    // Connection timeout
+                    await DisconnectAsync();
+                    return;
+                }
+
+                // Connection successful, setup streams
+                _pipeReader = new StreamReader(_pipeClient);
+                _pipeWriter = new StreamWriter(_pipeClient) { AutoFlush = true };
+            }
+            catch
+            {
+                // Connection failed, clean up
+                await DisconnectAsync();
+            }
+        }
+
+        /// <summary>
+        /// Disconnects and cleans up the current pipe connection.
+        /// </summary>
+        private async Task DisconnectAsync()
+        {
+            try
+            {
+                _pipeReader?.Dispose();
+                _pipeWriter?.Dispose();
+                _pipeClient?.Dispose();
+            }
+            catch
+            {
+                // Ignore exceptions during cleanup
+            }
+            finally
+            {
+                _pipeReader = null;
+                _pipeWriter = null;
+                _pipeClient = null;
+            }
+
+            // Small delay before allowing reconnection attempts
+            await Task.Delay(100);
         }
     }
 }
