@@ -24,6 +24,7 @@ namespace BeXCool.PipeMessages
         /// The named pipe server stream used for communication with clients.
         /// </summary>
         private NamedPipeServerStream? _pipeServer = null;
+        public NamedPipeServerStream? NamedPipeServer => _pipeServer;
         /// <summary>
         /// The stream reader and writer for reading and writing messages to the pipe client.
         /// </summary>
@@ -73,11 +74,6 @@ namespace BeXCool.PipeMessages
             _pipeWriter = new StreamWriter(_pipeServer) { AutoFlush = true };
 
             _ = Task.Run(MessageLoopAsync);
-
-            return;
-            _pipeTimer = new(100);
-            _pipeTimer.Elapsed += _timer_Elapsed;
-            _pipeTimer.Start();
         }
 
         /// <summary>
@@ -145,34 +141,16 @@ namespace BeXCool.PipeMessages
         }
 
         /// <summary>
-        /// Handles the timer elapsed event to check for messages and send queued messages if the pipe client is connected.
-        /// </summary>
-        private void _timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
-        {
-            if (_pipeServer == null)
-            {
-                _pipeTimer?.Stop();
-                return;
-            }
-
-            if (_messageQueue.Count > 0 && _pipeServer.IsConnected)
-            {
-                while (_messageQueue.Count > 0)
-                {
-                    var message = _messageQueue.Pop();
-                    WriteMessageToStreamAsync(message);
-                }
-            }
-
-            CheckForMessagesAsync();
-        }
-
-        /// <summary>
         /// Checks for incoming messages from the pipe client and raises the MessageReceived event for each message.
         /// </summary>
         private async Task CheckForMessagesAsync()
         {
-            if (_pipeServer == null || _pipeReader == null || !_pipeServer.IsConnected)
+            if (_pipeServer == null || _pipeReader == null)
+            {
+                return;
+            }
+
+            if (!_pipeServer.IsConnected)
             {
                 return;
             }
@@ -200,12 +178,19 @@ namespace BeXCool.PipeMessages
         /// <param name="message">The message to send.</param>
         private async Task WriteMessageToStreamAsync(T message)
         {
-            if (_pipeServer == null || _pipeWriter == null)
+            try
+            {
+                if (_pipeServer == null || _pipeWriter == null)
+                {
+                    return;
+                }
+
+                await _pipeWriter.WriteLineAsync(JsonConvert.SerializeObject(message));
+            }
+            catch
             {
                 return;
             }
-
-            await _pipeWriter.WriteLineAsync(JsonConvert.SerializeObject(message));
         }
     }
 }

@@ -23,6 +23,7 @@ namespace BeXCool.PipeMessages
         /// The named pipe server stream used for communication with clients.
         /// </summary>
         private NamedPipeClientStream? _pipeClient = null;
+        public NamedPipeClientStream? NamedPipeClient => _pipeClient;
         /// <summary>
         /// The stream reader and writer for reading and writing messages to the pipe server.
         /// </summary>
@@ -172,6 +173,11 @@ namespace BeXCool.PipeMessages
         private async Task CheckForMessagesAsync()
         {
             if (_pipeClient == null || _pipeReader == null)
+            {
+                return;
+            }
+
+            if (!_pipeClient.IsConnected)
             {
                 return;
             }
