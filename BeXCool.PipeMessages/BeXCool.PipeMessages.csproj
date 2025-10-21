@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <Title>BeXCool Pipe Messages</Title>
     <Authors>BeXCool</Authors>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
   </PropertyGroup>
 
   <ItemGroup>

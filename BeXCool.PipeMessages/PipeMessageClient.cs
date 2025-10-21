@@ -75,9 +75,6 @@ namespace BeXCool.PipeMessages
             _ = Task.Run(MessageLoopAsync);
 
             return;
-            _pipeTimer = new(100);
-            _pipeTimer.Elapsed += _timer_Elapsed;
-            _pipeTimer.Start();
         }
 
         /// <summary>
@@ -141,30 +138,9 @@ namespace BeXCool.PipeMessages
                 }
 
                 await CheckForMessagesAsync();
-            }
-        }
 
-        /// <summary>
-        /// Handles the timer elapsed event to check for messages and send queued messages if the pipe server is connected.
-        /// </summary>
-        private void _timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
-        {
-            if (_pipeClient == null)
-            {
-                _pipeTimer?.Stop();
-                return;
+                await Task.Delay(200);
             }
-
-            if (_messageQueue.Count > 0 && _pipeClient.IsConnected)
-            {
-                while (_messageQueue.Count > 0)
-                {
-                    var message = _messageQueue.Pop();
-                    WriteMessageToStreamAsync(message);
-                }
-            }
-
-            CheckForMessagesAsync();
         }
 
         /// <summary>
@@ -182,18 +158,15 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            while (_pipeClient != null && _pipeClient.IsConnected)
+            if (_pipeReader.Peek() >= 0)
             {
-                if (_pipeReader.Peek() >= 0)
+                var line = await _pipeReader.ReadLineAsync();
+                if (line != null)
                 {
-                    var line = await _pipeReader.ReadLineAsync();
-                    if (line != null)
+                    var message = JsonConvert.DeserializeObject<T>(line);
+                    if (message != null)
                     {
-                        var message = JsonConvert.DeserializeObject<T>(line);
-                        if (message != null)
-                        {
-                            MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
-                        }
+                        MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
                     }
                 }
             }

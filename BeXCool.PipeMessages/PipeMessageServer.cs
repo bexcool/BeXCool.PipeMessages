@@ -137,6 +137,8 @@ namespace BeXCool.PipeMessages
                 }
 
                 await CheckForMessagesAsync();
+
+                await Task.Delay(200);
             }
         }
 
@@ -155,18 +157,15 @@ namespace BeXCool.PipeMessages
                 return;
             }
 
-            while (_pipeServer != null && _pipeServer.IsConnected)
+            if (_pipeReader.Peek() >= 0)
             {
-                if (_pipeReader.Peek() >= 0)
+                var line = await _pipeReader.ReadLineAsync();
+                if (line != null)
                 {
-                    var line = await _pipeReader.ReadLineAsync();
-                    if (line != null)
+                    var message = JsonConvert.DeserializeObject<T>(line);
+                    if (message != null)
                     {
-                        var message = JsonConvert.DeserializeObject<T>(line);
-                        if (message != null)
-                        {
-                            MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
-                        }
+                        MessageReceived?.Invoke(this, new PipeMessageEventArgs<T>(message));
                     }
                 }
             }
